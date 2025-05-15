@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,29 +20,32 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { CalendarIcon, Send } from 'lucide-react';
+import { CalendarIcon, Send, TestTube2Icon, IndianRupee, ListPlus, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import type { Test } from '@/types';
 import { useAuthStore } from '@/hooks/use-auth-store';
-import { useRouter } from 'next/navigation';
-import React, { useEffect } from 'react';
+import { useTestSelectionStore } from '@/hooks/use-test-selection-store';
+import { useRouter, useSearchParams } from 'next/navigation';
+import React, { useEffect, useState, useMemo } from 'react';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
-// Mock tests data - in a real app, this would come from a prop or API/DB
-const mockTests: Pick<Test, 'id' | 'name' | 'price'>[] = [
-  { id: 'cbc', name: 'Complete Blood Count (CBC)', price: 350 },
-  { id: 'lft', name: 'Liver Function Test (LFT)', price: 700 },
-  { id: 'kft', name: 'Kidney Function Test (KFT)', price: 650 },
-  { id: 'lipid', name: 'Lipid Profile', price: 800 },
-  { id: 'thyroid', name: 'Thyroid Profile (T3, T4, TSH)', price: 900 },
-  { id: 'sugar', name: 'Blood Sugar (Fasting & PP)', price: 250 },
-  { id: 'vitd', name: 'Vitamin D Test', price: 1200 },
-  { id: 'vitb12', name: 'Vitamin B12 Test', price: 1000 },
-  { id: 'urine', name: 'Urine Routine & Microscopy', price: 200 },
-  { id: 'hba1c', name: 'HbA1c (Glycated Hemoglobin)', price: 550 },
+// Mock tests data - this should ideally be fetched or from a shared config
+const allAvailableTests: Pick<Test, 'id' | 'name' | 'price' | 'category'>[] = [
+  { id: 'cbc', name: 'Complete Blood Count (CBC)', price: 350, category: 'Hematology' },
+  { id: 'lft', name: 'Liver Function Test (LFT)', price: 700, category: 'Biochemistry' },
+  { id: 'kft', name: 'Kidney Function Test (KFT)', price: 650, category: 'Biochemistry' },
+  { id: 'lipid', name: 'Lipid Profile', price: 800, category: 'Cardiology' },
+  { id: 'thyroid', name: 'Thyroid Profile (T3, T4, TSH)', price: 900, category: 'Endocrinology' },
+  { id: 'sugar', name: 'Blood Sugar (Fasting & PP)', price: 250, category: 'Diabetes Care' },
+  { id: 'vitd', name: 'Vitamin D Test', price: 1200, category: 'Vitamins & Minerals' },
+  { id: 'vitb12', name: 'Vitamin B12 Test', price: 1000, category: 'Vitamins & Minerals' },
+  { id: 'urine', name: 'Urine Routine & Microscopy', price: 200, category: 'Pathology' },
+  { id: 'hba1c', name: 'HbA1c (Glycated Hemoglobin)', price: 550, category: 'Diabetes Care' },
 ];
 
 const appointmentFormSchema = z.object({
@@ -54,14 +58,13 @@ const appointmentFormSchema = z.object({
   notes: z.string().optional(),
 });
 
-interface AppointmentFormProps {
-  selectedTestId?: string;
-}
-
-export default function AppointmentForm({ selectedTestId }: AppointmentFormProps) {
+export default function AppointmentForm() {
   const { toast } = useToast();
   const { user } = useAuthStore();
+  const { selectedTestIds: storeTestIds, tests: storeSelectedTests, clearSelection, addTest, removeTest } = useTestSelectionStore();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [isTestSelectionDialogOpen, setIsTestSelectionDialogOpen] = useState(false);
 
   const form = useForm<z.infer<typeof appointmentFormSchema>>({
     resolver: zodResolver(appointmentFormSchema),
@@ -71,19 +74,46 @@ export default function AppointmentForm({ selectedTestId }: AppointmentFormProps
       address: '',
       preferredDate: undefined,
       preferredTimeSlot: '',
-      testIds: selectedTestId ? [selectedTestId] : [],
+      testIds: storeTestIds,
       notes: '',
     },
   });
-  
+
   useEffect(() => {
+    // Sync form with user details
     if (user && !form.getValues('patientName')) {
       form.setValue('patientName', user.displayName || '');
     }
-    if (selectedTestId && !form.getValues('testIds').includes(selectedTestId)) {
-      form.setValue('testIds', [selectedTestId]);
+
+    // Initialize tests from store or query param (legacy single test booking)
+    const queryTestId = searchParams.get('testId');
+    let initialTestIds = [...storeTestIds];
+
+    if (queryTestId && !initialTestIds.includes(queryTestId)) {
+      const testToAdd = allAvailableTests.find(t => t.id === queryTestId);
+      if (testToAdd) {
+        addTest(testToAdd); // Add to store if coming from direct link
+        initialTestIds.push(queryTestId); // Ensure it's in the local list for form init
+      }
     }
-  }, [user, selectedTestId, form]);
+    form.setValue('testIds', initialTestIds);
+
+  }, [user, storeTestIds, searchParams, form, addTest]);
+
+  // Watch for changes in form's testIds and sync back to store if needed
+  // This might be complex if dialog directly manipulates form. Simpler: dialog reads from store, writes to store, form reads from store.
+  // For now, let's assume the dialog updates the form value, and the store is the source of truth before form load.
+  const watchedTestIds = form.watch('testIds');
+
+  const currentSelectedTestsDetails = useMemo(() => {
+    return watchedTestIds
+      .map(id => allAvailableTests.find(t => t.id === id))
+      .filter((test): test is Pick<Test, 'id' | 'name' | 'price'> => !!test);
+  }, [watchedTestIds]);
+  
+  const totalCost = useMemo(() => {
+    return currentSelectedTestsDetails.reduce((sum, test) => sum + test.price, 0);
+  }, [currentSelectedTestsDetails]);
 
 
   async function onSubmit(values: z.infer<typeof appointmentFormSchema>) {
@@ -93,13 +123,14 @@ export default function AppointmentForm({ selectedTestId }: AppointmentFormProps
         description: 'Please log in to book an appointment.',
         variant: 'destructive',
       });
-      router.push(`/auth/signin?redirect=/book-appointment${values.testIds.length > 0 ? `?testId=${values.testIds[0]}` : ''}`);
+      const redirectQuery = values.testIds.length > 0 ? `?testId=${values.testIds[0]}` : ''; // Or pass all selected
+      router.push(`/auth/signin?redirect=/book-appointment${redirectQuery}`);
       return;
     }
     
     try {
-      const selectedTestDetails = values.testIds.map(id => {
-        const test = mockTests.find(t => t.id === id);
+      const selectedTestDetailsForDB = values.testIds.map(id => {
+        const test = allAvailableTests.find(t => t.id === id);
         return test ? { id: test.id, name: test.name, price: test.price } : null;
       }).filter(Boolean);
 
@@ -110,13 +141,14 @@ export default function AppointmentForm({ selectedTestId }: AppointmentFormProps
         address: values.address,
         preferredDate: values.preferredDate,
         preferredTimeSlot: values.preferredTimeSlot,
-        tests: selectedTestDetails, // Storing details of selected tests
+        tests: selectedTestDetailsForDB,
+        totalCost: totalCost,
         notes: values.notes,
         bookedAt: serverTimestamp(),
-        status: 'Pending', // Initial status
+        status: 'Pending', 
       });
 
-      console.log('Appointment Data for Admin:', { ...values, userId: user.uid, tests: selectedTestDetails, status: 'Pending' });
+      console.log('Appointment Data for Admin:', { ...values, userId: user.uid, tests: selectedTestDetailsForDB, totalCost, status: 'Pending' });
       // TODO: Implement actual admin notification (e.g., email, dashboard update)
 
       toast({
@@ -124,7 +156,7 @@ export default function AppointmentForm({ selectedTestId }: AppointmentFormProps
         description: (
           <div>
             <p>Thank you, {values.patientName}. Your appointment is confirmed.</p>
-            <p>Selected Tests: {selectedTestDetails.map(t => t?.name).join(', ')}</p>
+            <p>Selected Tests: {selectedTestDetailsForDB.map(t => t?.name).join(', ')} (Total: ₹{totalCost.toFixed(2)})</p>
             <p>Date: {format(values.preferredDate, 'PPP')}</p>
             <p>Time Slot: {values.preferredTimeSlot}</p>
             <p className="mt-2 text-sm">Further details will be sent to your contact number and email.</p>
@@ -133,6 +165,7 @@ export default function AppointmentForm({ selectedTestId }: AppointmentFormProps
         variant: 'default',
         duration: 7000,
       });
+      clearSelection(); // Clear the cart/selection from Zustand store
       form.reset({
         patientName: user?.displayName || '',
         contactNumber: '',
@@ -152,6 +185,20 @@ export default function AppointmentForm({ selectedTestId }: AppointmentFormProps
       });
     }
   }
+
+  const timeSlots = [];
+    for (let hour = 7; hour < 19; hour++) { // 7 AM to 6 PM (ends before 7 PM)
+        const ampm = hour < 12 ? 'AM' : 'PM';
+        const displayHour = hour % 12 === 0 ? 12 : hour % 12;
+        timeSlots.push(`${String(displayHour).padStart(2, '0')}:00 ${ampm} - ${String(displayHour).padStart(2, '0')}:30 ${ampm}`);
+        timeSlots.push(`${String(displayHour).padStart(2, '0')}:30 ${ampm} - ${String(hour === 11 ? 12 : (displayHour + 1 > 12 ? 1 : displayHour +1) % 13).padStart(2, '0')}:00 ${hour === 11 ? 'PM' : (hour + 1 >=12 && hour+1 < 23 ? 'PM' : 'AM')}`);
+    }
+     // Fix last slot for 6:30 PM - 7:00 PM
+    const lastSlotIndex = timeSlots.findIndex(slot => slot.startsWith("06:30 PM"));
+    if (lastSlotIndex !== -1) {
+        timeSlots[lastSlotIndex] = "06:30 PM - 07:00 PM";
+    }
+
 
   return (
     <Form {...form}>
@@ -248,18 +295,9 @@ export default function AppointmentForm({ selectedTestId }: AppointmentFormProps
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="07:00 AM - 08:00 AM">07:00 AM - 08:00 AM</SelectItem>
-                    <SelectItem value="08:00 AM - 09:00 AM">08:00 AM - 09:00 AM</SelectItem>
-                    <SelectItem value="09:00 AM - 10:00 AM">09:00 AM - 10:00 AM</SelectItem>
-                    <SelectItem value="10:00 AM - 11:00 AM">10:00 AM - 11:00 AM</SelectItem>
-                    <SelectItem value="11:00 AM - 12:00 PM">11:00 AM - 12:00 PM</SelectItem>
-                    <SelectItem value="12:00 PM - 01:00 PM">12:00 PM - 01:00 PM</SelectItem>
-                    <SelectItem value="01:00 PM - 02:00 PM">01:00 PM - 02:00 PM</SelectItem>
-                    <SelectItem value="02:00 PM - 03:00 PM">02:00 PM - 03:00 PM</SelectItem>
-                    <SelectItem value="03:00 PM - 04:00 PM">03:00 PM - 04:00 PM</SelectItem>
-                    <SelectItem value="04:00 PM - 05:00 PM">04:00 PM - 05:00 PM</SelectItem>
-                    <SelectItem value="05:00 PM - 06:00 PM">05:00 PM - 06:00 PM</SelectItem>
-                    <SelectItem value="06:00 PM - 07:00 PM">06:00 PM - 07:00 PM</SelectItem>
+                    {timeSlots.map(slot => (
+                      <SelectItem key={slot} value={slot}>{slot}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -268,57 +306,91 @@ export default function AppointmentForm({ selectedTestId }: AppointmentFormProps
           />
         </div>
         
-        <FormField
-          control={form.control}
-          name="testIds"
-          render={() => (
-            <FormItem>
-              <div className="mb-4">
-                <FormLabel className="text-base">Select Test(s)</FormLabel>
-                <FormDescription>
-                  Choose one or more tests for your appointment.
-                </FormDescription>
+        <div>
+          <FormLabel className="text-base">Selected Test(s)</FormLabel>
+          {currentSelectedTestsDetails.length === 0 ? (
+             <div className="mt-2 p-4 border border-dashed rounded-md text-center text-muted-foreground">
+                <AlertTriangle className="mx-auto h-8 w-8 mb-2" />
+                No tests selected. Please add tests to proceed.
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                {mockTests.map((test) => (
-                  <FormField
-                    key={test.id}
-                    control={form.control}
-                    name="testIds"
-                    render={({ field }) => {
-                      return (
+          ) : (
+            <Card className="mt-2">
+              <CardContent className="p-4 space-y-2">
+                {currentSelectedTestsDetails.map(test => (
+                  <div key={test.id} className="flex justify-between items-center text-sm">
+                    <span>{test.name}</span>
+                    <span className="font-medium flex items-center"><IndianRupee className="h-3.5 w-3.5 mr-0.5" />{test.price.toFixed(2)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between items-center font-semibold text-md border-t pt-2 mt-2">
+                  <span>Total Cost</span>
+                  <span className="flex items-center"><IndianRupee className="h-4 w-4 mr-0.5" />{totalCost.toFixed(2)}</span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          <Dialog open={isTestSelectionDialogOpen} onOpenChange={setIsTestSelectionDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="mt-4 w-full md:w-auto">
+                <ListPlus className="mr-2 h-4 w-4" />
+                {currentSelectedTestsDetails.length > 0 ? 'Modify Selected Tests' : 'Select Tests'}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[600px]">
+              <DialogHeader>
+                <DialogTitle>Select Tests</DialogTitle>
+                <DialogDescription>
+                  Choose one or more tests for your appointment.
+                </DialogDescription>
+              </DialogHeader>
+              <FormField
+                control={form.control}
+                name="testIds"
+                render={({ field: formField }) => ( // Renamed field to formField to avoid conflict
+                  <FormItem>
+                    <ScrollArea className="h-[300px] border rounded-md p-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-2 gap-y-1 p-2">
+                      {allAvailableTests.map((test) => (
                         <FormItem
                           key={test.id}
                           className="flex flex-row items-center space-x-3 space-y-0 p-2 rounded-md border border-transparent hover:border-primary/50 transition-colors"
                         >
                           <FormControl>
                             <Checkbox
-                              checked={field.value?.includes(test.id)}
+                              checked={formField.value?.includes(test.id)}
                               onCheckedChange={(checked) => {
-                                const currentValues = field.value || [];
-                                return checked
-                                  ? field.onChange([...currentValues, test.id])
-                                  : field.onChange(
-                                      currentValues.filter(
-                                        (value) => value !== test.id
-                                      )
-                                    );
+                                const currentValues = formField.value || [];
+                                const newValues = checked
+                                  ? [...currentValues, test.id]
+                                  : currentValues.filter((value) => value !== test.id);
+                                formField.onChange(newValues); // Update form state
+                                // Sync with Zustand store
+                                if (checked) {
+                                  addTest(test);
+                                } else {
+                                  removeTest(test.id);
+                                }
                               }}
                             />
                           </FormControl>
                           <FormLabel className="font-normal text-sm cursor-pointer flex-grow">
-                            {test.name} (₹{test.price})
+                            {test.name} (₹{test.price}) <span className="text-xs text-muted-foreground">({test.category})</span>
                           </FormLabel>
                         </FormItem>
-                      );
-                    }}
-                  />
-                ))}
-              </div>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+                      ))}
+                    </div>
+                    </ScrollArea>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <DialogFooter>
+                <Button onClick={() => setIsTestSelectionDialogOpen(false)}>Done</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          {form.formState.errors.testIds && <FormMessage className="mt-2">{form.formState.errors.testIds.message}</FormMessage>}
+        </div>
         
         <FormField
           control={form.control}
@@ -334,7 +406,7 @@ export default function AppointmentForm({ selectedTestId }: AppointmentFormProps
           )}
         />
 
-        <Button type="submit" size="lg" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground">
+        <Button type="submit" size="lg" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={currentSelectedTestsDetails.length === 0}>
            <Send className="mr-2 h-5 w-5" />
           Confirm Appointment
         </Button>

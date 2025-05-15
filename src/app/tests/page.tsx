@@ -1,9 +1,13 @@
+
 'use client';
 import React, { useState, useMemo } from 'react';
 import TestCard from '@/components/test-card';
 import type { Test } from '@/types';
-import { Stethoscope, Droplet, Heart, Bone, Microscope, TestTube2, Search } from 'lucide-react';
+import { Stethoscope, Droplet, Heart, Bone, Microscope, TestTube2, Search, ShoppingCart, CalendarCheck } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
+import { useTestSelectionStore } from '@/hooks/use-test-selection-store';
 
 // Mock data for tests
 const mockTests: Test[] = [
@@ -22,6 +26,7 @@ const mockTests: Test[] = [
 
 export default function TestsPage() {
   const [searchTerm, setSearchTerm] = useState('');
+  const { selectedTestIds } = useTestSelectionStore();
 
   const filteredTests = useMemo(() => {
     if (!searchTerm) return mockTests;
@@ -38,11 +43,11 @@ export default function TestsPage() {
         <Stethoscope className="h-16 w-16 text-primary mx-auto mb-4" />
         <h1 className="text-4xl font-bold text-primary">Available Tests & Pricing</h1>
         <p className="text-lg text-muted-foreground mt-2">
-          Choose from a wide range of diagnostic tests. Book online for convenient home sample collection.
+          Select tests to add to your cart and proceed to booking.
         </p>
       </div>
 
-      <div className="mb-8 max-w-xl mx-auto">
+      <div className="mb-8 max-w-xl mx-auto sticky top-20 z-10 bg-background py-2"> {/* Make search and book button sticky */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
           <Input
@@ -53,10 +58,18 @@ export default function TestsPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+        {selectedTestIds.length > 0 && (
+          <Button asChild size="lg" className="w-full mt-4 bg-accent hover:bg-accent/90 text-accent-foreground">
+            <Link href="/book-appointment">
+              <ShoppingCart className="mr-2 h-5 w-5" />
+              View Cart & Book ({selectedTestIds.length} item{selectedTestIds.length === 1 ? '' : 's'})
+            </Link>
+          </Button>
+        )}
       </div>
       
       {filteredTests.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pt-4"> {/* Add padding top to avoid overlap */}
           {filteredTests.map((test) => (
             <TestCard key={test.id} test={test} />
           ))}

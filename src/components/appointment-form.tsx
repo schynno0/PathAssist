@@ -22,9 +22,9 @@ import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Card, CardContent } from '@/components/ui/card'; // Added import
+import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { CalendarIcon, Send, TestTube2Icon, IndianRupee, ListPlus, AlertTriangle } from 'lucide-react';
+import { CalendarIcon, Send, IndianRupee, ListPlus, AlertTriangle, Search } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import type { Test } from '@/types';
@@ -62,10 +62,12 @@ const appointmentFormSchema = z.object({
 export default function AppointmentForm() {
   const { toast } = useToast();
   const { user } = useAuthStore();
-  const { selectedTestIds: storeTestIds, tests: storeSelectedTests, clearSelection, addTest, removeTest } = useTestSelectionStore();
+  const { selectedTestIds: storeTestIds, addTest: addTestToStore, removeTest: removeTestFromStore, clearSelection } = useTestSelectionStore();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isTestSelectionDialogOpen, setIsTestSelectionDialogOpen] = useState(false);
+  const [testSearchTermDialog, setTestSearchTermDialog] = useState('');
+
 
   const form = useForm<z.infer<typeof appointmentFormSchema>>({
     resolver: zodResolver(appointmentFormSchema),
@@ -81,29 +83,30 @@ export default function AppointmentForm() {
   });
 
   useEffect(() => {
-    // Sync form with user details
     if (user && !form.getValues('patientName')) {
       form.setValue('patientName', user.displayName || '');
     }
 
-    // Initialize tests from store or query param (legacy single test booking)
     const queryTestId = searchParams.get('testId');
     let initialTestIds = [...storeTestIds];
 
     if (queryTestId && !initialTestIds.includes(queryTestId)) {
       const testToAdd = allAvailableTests.find(t => t.id === queryTestId);
       if (testToAdd) {
-        addTest(testToAdd); // Add to store if coming from direct link
-        initialTestIds.push(queryTestId); // Ensure it's in the local list for form init
+        addTestToStore(testToAdd); 
+        initialTestIds.push(queryTestId);
       }
     }
-    form.setValue('testIds', initialTestIds);
+    form.setValue('testIds', initialTestIds, { shouldValidate: true });
 
-  }, [user, storeTestIds, searchParams, form, addTest]);
+  }, [user, storeTestIds, searchParams, form, addTestToStore]);
+  
+  // Update form's testIds when store changes
+  useEffect(() => {
+    form.setValue('testIds', storeTestIds, { shouldValidate: true });
+  }, [storeTestIds, form]);
 
-  // Watch for changes in form's testIds and sync back to store if needed
-  // This might be complex if dialog directly manipulates form. Simpler: dialog reads from store, writes to store, form reads from store.
-  // For now, let's assume the dialog updates the form value, and the store is the source of truth before form load.
+
   const watchedTestIds = form.watch('testIds');
 
   const currentSelectedTestsDetails = useMemo(() => {
@@ -116,6 +119,14 @@ export default function AppointmentForm() {
     return currentSelectedTestsDetails.reduce((sum, test) => sum + test.price, 0);
   }, [currentSelectedTestsDetails]);
 
+  const filteredAvailableTestsDialog = useMemo(() => {
+    if (!testSearchTermDialog) return allAvailableTests;
+    return allAvailableTests.filter(test =>
+      test.name.toLowerCase().includes(testSearchTermDialog.toLowerCase()) ||
+      test.category.toLowerCase().includes(testSearchTermDialog.toLowerCase())
+    );
+  }, [testSearchTermDialog]);
+
 
   async function onSubmit(values: z.infer<typeof appointmentFormSchema>) {
     if (!user) {
@@ -124,8 +135,7 @@ export default function AppointmentForm() {
         description: 'Please log in to book an appointment.',
         variant: 'destructive',
       });
-      const redirectQuery = values.testIds.length > 0 ? `?testId=${values.testIds[0]}` : ''; // Or pass all selected
-      router.push(`/auth/signin?redirect=/book-appointment${redirectQuery}`);
+      router.push(`/auth/signin?redirect=/book-appointment`);
       return;
     }
     
@@ -149,9 +159,8 @@ export default function AppointmentForm() {
         status: 'Pending', 
       });
 
-      console.log('Appointment Data for Admin:', { ...values, userId: user.uid, tests: selectedTestDetailsForDB, totalCost, status: 'Pending' });
-      // TODO: Implement actual admin notification (e.g., email, dashboard update)
-
+      console.log('Admin Notification: New appointment booked by', values.patientName, 'Details:', { ...values, userId: user.uid, tests: selectedTestDetailsForDB, totalCost });
+      
       toast({
         title: 'Appointment Booked!',
         description: (
@@ -166,7 +175,7 @@ export default function AppointmentForm() {
         variant: 'default',
         duration: 7000,
       });
-      clearSelection(); // Clear the cart/selection from Zustand store
+      clearSelection(); 
       form.reset({
         patientName: user?.displayName || '',
         contactNumber: '',
@@ -188,13 +197,12 @@ export default function AppointmentForm() {
   }
 
   const timeSlots = [];
-    for (let hour = 7; hour < 19; hour++) { // 7 AM to 6 PM (ends before 7 PM)
+    for (let hour = 7; hour < 19; hour++) { 
         const ampm = hour < 12 ? 'AM' : 'PM';
         const displayHour = hour % 12 === 0 ? 12 : hour % 12;
         timeSlots.push(`${String(displayHour).padStart(2, '0')}:00 ${ampm} - ${String(displayHour).padStart(2, '0')}:30 ${ampm}`);
         timeSlots.push(`${String(displayHour).padStart(2, '0')}:30 ${ampm} - ${String(hour === 11 ? 12 : (displayHour + 1 > 12 ? 1 : displayHour +1) % 13).padStart(2, '0')}:00 ${hour === 11 ? 'PM' : (hour + 1 >=12 && hour+1 < 23 ? 'PM' : 'AM')}`);
     }
-     // Fix last slot for 6:30 PM - 7:00 PM
     const lastSlotIndex = timeSlots.findIndex(slot => slot.startsWith("06:30 PM"));
     if (lastSlotIndex !== -1) {
         timeSlots[lastSlotIndex] = "06:30 PM - 07:00 PM";
@@ -344,14 +352,27 @@ export default function AppointmentForm() {
                   Choose one or more tests for your appointment.
                 </DialogDescription>
               </DialogHeader>
+              <div className="relative my-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                <Input
+                  type="search"
+                  placeholder="Search tests by name or category..."
+                  className="pl-10 w-full"
+                  value={testSearchTermDialog}
+                  onChange={(e) => setTestSearchTermDialog(e.target.value)}
+                />
+              </div>
               <FormField
                 control={form.control}
                 name="testIds"
-                render={({ field: formField }) => ( // Renamed field to formField to avoid conflict
+                render={({ field: formField }) => ( 
                   <FormItem>
                     <ScrollArea className="h-[300px] border rounded-md p-1">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-2 gap-y-1 p-2">
-                      {allAvailableTests.map((test) => (
+                      {filteredAvailableTestsDialog.length === 0 && (
+                        <p className="col-span-full text-center text-muted-foreground p-4">No tests found matching your search.</p>
+                      )}
+                      {filteredAvailableTestsDialog.map((test) => (
                         <FormItem
                           key={test.id}
                           className="flex flex-row items-center space-x-3 space-y-0 p-2 rounded-md border border-transparent hover:border-primary/50 transition-colors"
@@ -364,12 +385,11 @@ export default function AppointmentForm() {
                                 const newValues = checked
                                   ? [...currentValues, test.id]
                                   : currentValues.filter((value) => value !== test.id);
-                                formField.onChange(newValues); // Update form state
-                                // Sync with Zustand store
+                                formField.onChange(newValues); 
                                 if (checked) {
-                                  addTest(test);
+                                  addTestToStore(test);
                                 } else {
-                                  removeTest(test.id);
+                                  removeTestFromStore(test.id);
                                 }
                               }}
                             />
@@ -390,7 +410,9 @@ export default function AppointmentForm() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          {form.formState.errors.testIds && <FormMessage className="mt-2">{form.formState.errors.testIds.message}</FormMessage>}
+          {form.formState.errors.testIds && !isTestSelectionDialogOpen && (
+            <FormMessage className="mt-2">{form.formState.errors.testIds.message}</FormMessage>
+          )}
         </div>
         
         <FormField
@@ -407,7 +429,7 @@ export default function AppointmentForm() {
           )}
         />
 
-        <Button type="submit" size="lg" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={currentSelectedTestsDetails.length === 0}>
+        <Button type="submit" size="lg" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground" disabled={currentSelectedTestsDetails.length === 0 || !form.formState.isValid && form.formState.isSubmitted}>
            <Send className="mr-2 h-5 w-5" />
           Confirm Appointment
         </Button>

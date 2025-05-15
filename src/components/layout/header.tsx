@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { HeartPulse, UserCircle, LogIn, LogOut, Stethoscope, CalendarDays, FileText, FlaskConical, Menu } from 'lucide-react';
+import { HeartPulse, UserCircle, LogIn, LogOut, Stethoscope, CalendarDays, FileText, FlaskConical, Menu, Sun, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -18,6 +18,7 @@ import { useAuthStore } from '@/hooks/use-auth-store';
 import { auth } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import React from 'react';
+import { useTheme } from 'next-themes';
 
 const navItems = [
   { href: '/tests', label: 'Tests', icon: Stethoscope },
@@ -30,20 +31,20 @@ export default function Header() {
   const { user, isLoading } = useAuthStore();
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+  const { theme, setTheme } = useTheme();
 
   const handleSignOut = async () => {
     try {
       await signOut(auth);
-      router.push('/'); // Redirect to home page after sign out
+      router.push('/'); 
     } catch (error) {
       console.error('Error signing out:', error);
-      // Optionally, show a toast notification for error
     }
   };
 
   const renderAuthButton = () => {
     if (isLoading) {
-      return <div className="h-10 w-24 animate-pulse rounded-md bg-muted"></div>; // Skeleton loader
+      return <div className="h-10 w-24 animate-pulse rounded-md bg-muted"></div>; 
     }
 
     if (user) {
@@ -97,13 +98,12 @@ export default function Header() {
     </>
   );
 
-
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center space-x-2 text-primary hover:opacity-80 transition-opacity">
           <HeartPulse className="h-7 w-7" />
-          <span className="font-bold text-xl">PathAssist</span>
+          <span className="font-bold text-xl">YadavLab</span>
         </Link>
         
         <nav className="hidden md:flex items-center space-x-1">
@@ -111,10 +111,30 @@ export default function Header() {
         </nav>
 
         <div className="flex items-center space-x-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+            aria-label="Toggle theme"
+            className="hidden md:inline-flex"
+          >
+            <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+            <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+          </Button>
           <div className="hidden md:block">
             {renderAuthButton()}
           </div>
           <div className="md:hidden">
+             <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                aria-label="Toggle theme"
+                className="mr-2"
+              >
+                <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              </Button>
             <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
               <SheetTrigger asChild>
                 <Button variant="outline" size="icon">
@@ -126,7 +146,7 @@ export default function Header() {
                 <div className="flex flex-col space-y-4 p-4">
                   <Link href="/" className="flex items-center space-x-2 text-primary mb-4" onClick={() => setIsMobileMenuOpen(false)}>
                     <HeartPulse className="h-7 w-7" />
-                    <span className="font-bold text-xl">PathAssist</span>
+                    <span className="font-bold text-xl">YadavLab</span>
                   </Link>
                   <NavLinks onItemClick={() => setIsMobileMenuOpen(false)} />
                   <div className="pt-4 border-t">

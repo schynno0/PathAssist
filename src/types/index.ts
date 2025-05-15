@@ -22,7 +22,8 @@ export interface AppointmentFormData {
   address: string;
   preferredDate: Date;
   preferredTimeSlot: string;
-  testId: string;
+  testIds: string[]; // Changed from testId to testIds
+  notes?: string; // Optional field for any specific notes
 }
 
 export interface ReportAnalysis {

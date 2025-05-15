@@ -8,12 +8,12 @@ export default function SignInPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-background to-background p-4">
        <Link href="/" className="flex items-center space-x-2 text-primary hover:opacity-80 transition-opacity mb-8">
           <HeartPulse className="h-10 w-10" />
-          <span className="font-bold text-4xl">PathAssist</span>
+          <span className="font-bold text-4xl">YadavLab</span>
         </Link>
       <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold text-primary">Sign In</CardTitle>
-          <CardDescription>Access your PathAssist account or create a new one using your Google account.</CardDescription>
+          <CardDescription>Access your YadavLab account or create a new one using your Google account.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">

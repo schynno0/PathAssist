@@ -5,6 +5,7 @@ import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import { Toaster } from '@/components/ui/toaster';
 import AuthProvider from '@/components/auth-provider';
+import { ThemeProvider } from 'next-themes';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -17,8 +18,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'PathAssist - Your Health Diagnostics Partner',
-  description: 'Book lab tests, get reports, and AI-powered analysis.',
+  title: 'YadavLab - Your Health Diagnostics Partner',
+  description: 'Book lab tests, get reports, and AI-powered analysis with YadavLab.',
 };
 
 export default function RootLayout({
@@ -27,16 +28,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased flex flex-col min-h-screen`}>
-        <AuthProvider>
-          <Header />
-          <main className="flex-grow">
-            {children}
-          </main>
-          <Footer />
-          <Toaster />
-        </AuthProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <AuthProvider>
+            <Header />
+            <main className="flex-grow">
+              {children}
+            </main>
+            <Footer />
+            <Toaster />
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

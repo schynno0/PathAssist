@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -22,10 +23,26 @@ import { cn } from '@/lib/utils';
 import { CalendarIcon, Send } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import type { AppointmentFormData, Test } from '@/types';
+import type { Test } from '@/types';
 import { useAuthStore } from '@/hooks/use-auth-store';
 import { useRouter } from 'next/navigation';
 import React, { useEffect } from 'react';
+import { db } from '@/lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+
+// Mock tests data - in a real app, this would come from a prop or API/DB
+const mockTests: Pick<Test, 'id' | 'name' | 'price'>[] = [
+  { id: 'cbc', name: 'Complete Blood Count (CBC)', price: 350 },
+  { id: 'lft', name: 'Liver Function Test (LFT)', price: 700 },
+  { id: 'kft', name: 'Kidney Function Test (KFT)', price: 650 },
+  { id: 'lipid', name: 'Lipid Profile', price: 800 },
+  { id: 'thyroid', name: 'Thyroid Profile (T3, T4, TSH)', price: 900 },
+  { id: 'sugar', name: 'Blood Sugar (Fasting & PP)', price: 250 },
+  { id: 'vitd', name: 'Vitamin D Test', price: 1200 },
+  { id: 'vitb12', name: 'Vitamin B12 Test', price: 1000 },
+  { id: 'urine', name: 'Urine Routine & Microscopy', price: 200 },
+  { id: 'hba1c', name: 'HbA1c (Glycated Hemoglobin)', price: 550 },
+];
 
 const appointmentFormSchema = z.object({
   patientName: z.string().min(2, { message: 'Patient name must be at least 2 characters.' }),
@@ -33,18 +50,9 @@ const appointmentFormSchema = z.object({
   address: z.string().min(10, { message: 'Address must be at least 10 characters.' }),
   preferredDate: z.date({ required_error: 'Preferred date is required.' }),
   preferredTimeSlot: z.string({ required_error: 'Preferred time slot is required.' }),
-  testId: z.string().optional(), // Can be optional if user selects from a general booking form
+  testIds: z.array(z.string()).min(1, { message: 'Please select at least one test.' }),
+  notes: z.string().optional(),
 });
-
-// Mock tests data - in a real app, this would come from a prop or API
-const mockTests: Pick<Test, 'id' | 'name'>[] = [
-  { id: 'cbc', name: 'Complete Blood Count (CBC)'},
-  { id: 'lft', name: 'Liver Function Test (LFT)'},
-  { id: 'kft', name: 'Kidney Function Test (KFT)'},
-  { id: 'lipid', name: 'Lipid Profile'},
-  { id: 'thyroid', name: 'Thyroid Profile (T3, T4, TSH)'},
-];
-
 
 interface AppointmentFormProps {
   selectedTestId?: string;
@@ -63,7 +71,8 @@ export default function AppointmentForm({ selectedTestId }: AppointmentFormProps
       address: '',
       preferredDate: undefined,
       preferredTimeSlot: '',
-      testId: selectedTestId || '',
+      testIds: selectedTestId ? [selectedTestId] : [],
+      notes: '',
     },
   });
   
@@ -71,43 +80,77 @@ export default function AppointmentForm({ selectedTestId }: AppointmentFormProps
     if (user && !form.getValues('patientName')) {
       form.setValue('patientName', user.displayName || '');
     }
-    if (selectedTestId) {
-      form.setValue('testId', selectedTestId);
+    if (selectedTestId && !form.getValues('testIds').includes(selectedTestId)) {
+      form.setValue('testIds', [selectedTestId]);
     }
   }, [user, selectedTestId, form]);
 
 
-  function onSubmit(values: z.infer<typeof appointmentFormSchema>) {
-    // TODO: Implement actual appointment booking logic (e.g., API call)
-    console.log('Appointment Data:', values);
-
-    // Check if user is logged in
+  async function onSubmit(values: z.infer<typeof appointmentFormSchema>) {
     if (!user) {
       toast({
         title: 'Authentication Required',
         description: 'Please log in to book an appointment.',
         variant: 'destructive',
       });
-      router.push(`/auth/signin?redirect=/book-appointment${selectedTestId ? `?testId=${selectedTestId}` : ''}`);
+      router.push(`/auth/signin?redirect=/book-appointment${values.testIds.length > 0 ? `?testId=${values.testIds[0]}` : ''}`);
       return;
     }
     
-    // Simulate API call
-    toast({
-      title: 'Appointment Booked!',
-      description: (
-        <div>
-          <p>Thank you, {values.patientName}. Your appointment for {mockTests.find(t => t.id === values.testId)?.name || 'selected test(s)'} is confirmed.</p>
-          <p>Date: {format(values.preferredDate, 'PPP')}</p>
-          <p>Time Slot: {values.preferredTimeSlot}</p>
-          <p className="mt-2 text-sm">Further details will be sent to your contact number and email.</p>
-        </div>
-      ),
-      variant: 'default', // Use 'default' which is often green or positive in themes. Or specify accent color.
-      duration: 7000,
-    });
-    form.reset();
-    router.push('/reports'); // Navigate to a confirmation or reports page
+    try {
+      const selectedTestDetails = values.testIds.map(id => {
+        const test = mockTests.find(t => t.id === id);
+        return test ? { id: test.id, name: test.name, price: test.price } : null;
+      }).filter(Boolean);
+
+      await addDoc(collection(db, 'appointments'), {
+        userId: user.uid,
+        patientName: values.patientName,
+        contactNumber: values.contactNumber,
+        address: values.address,
+        preferredDate: values.preferredDate,
+        preferredTimeSlot: values.preferredTimeSlot,
+        tests: selectedTestDetails, // Storing details of selected tests
+        notes: values.notes,
+        bookedAt: serverTimestamp(),
+        status: 'Pending', // Initial status
+      });
+
+      console.log('Appointment Data for Admin:', { ...values, userId: user.uid, tests: selectedTestDetails, status: 'Pending' });
+      // TODO: Implement actual admin notification (e.g., email, dashboard update)
+
+      toast({
+        title: 'Appointment Booked!',
+        description: (
+          <div>
+            <p>Thank you, {values.patientName}. Your appointment is confirmed.</p>
+            <p>Selected Tests: {selectedTestDetails.map(t => t?.name).join(', ')}</p>
+            <p>Date: {format(values.preferredDate, 'PPP')}</p>
+            <p>Time Slot: {values.preferredTimeSlot}</p>
+            <p className="mt-2 text-sm">Further details will be sent to your contact number and email.</p>
+          </div>
+        ),
+        variant: 'default',
+        duration: 7000,
+      });
+      form.reset({
+        patientName: user?.displayName || '',
+        contactNumber: '',
+        address: '',
+        preferredDate: undefined,
+        preferredTimeSlot: '',
+        testIds: [],
+        notes: '',
+      });
+      router.push('/reports'); 
+    } catch (error) {
+      console.error("Error booking appointment: ", error);
+      toast({
+        title: 'Booking Failed',
+        description: 'Could not save your appointment. Please try again.',
+        variant: 'destructive',
+      });
+    }
   }
 
   return (
@@ -205,9 +248,18 @@ export default function AppointmentForm({ selectedTestId }: AppointmentFormProps
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="Morning (8 AM - 11 AM)">Morning (8 AM - 11 AM)</SelectItem>
-                    <SelectItem value="Afternoon (12 PM - 3 PM)">Afternoon (12 PM - 3 PM)</SelectItem>
-                    <SelectItem value="Evening (4 PM - 7 PM)">Evening (4 PM - 7 PM)</SelectItem>
+                    <SelectItem value="07:00 AM - 08:00 AM">07:00 AM - 08:00 AM</SelectItem>
+                    <SelectItem value="08:00 AM - 09:00 AM">08:00 AM - 09:00 AM</SelectItem>
+                    <SelectItem value="09:00 AM - 10:00 AM">09:00 AM - 10:00 AM</SelectItem>
+                    <SelectItem value="10:00 AM - 11:00 AM">10:00 AM - 11:00 AM</SelectItem>
+                    <SelectItem value="11:00 AM - 12:00 PM">11:00 AM - 12:00 PM</SelectItem>
+                    <SelectItem value="12:00 PM - 01:00 PM">12:00 PM - 01:00 PM</SelectItem>
+                    <SelectItem value="01:00 PM - 02:00 PM">01:00 PM - 02:00 PM</SelectItem>
+                    <SelectItem value="02:00 PM - 03:00 PM">02:00 PM - 03:00 PM</SelectItem>
+                    <SelectItem value="03:00 PM - 04:00 PM">03:00 PM - 04:00 PM</SelectItem>
+                    <SelectItem value="04:00 PM - 05:00 PM">04:00 PM - 05:00 PM</SelectItem>
+                    <SelectItem value="05:00 PM - 06:00 PM">05:00 PM - 06:00 PM</SelectItem>
+                    <SelectItem value="06:00 PM - 07:00 PM">06:00 PM - 07:00 PM</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -215,34 +267,72 @@ export default function AppointmentForm({ selectedTestId }: AppointmentFormProps
             )}
           />
         </div>
-         {!selectedTestId && (
-            <FormField
-            control={form.control}
-            name="testId"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Select Test</FormLabel>
-                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a test (optional)" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {mockTests.map(test => (
-                         <SelectItem key={test.id} value={test.id}>{test.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        
+        <FormField
+          control={form.control}
+          name="testIds"
+          render={() => (
+            <FormItem>
+              <div className="mb-4">
+                <FormLabel className="text-base">Select Test(s)</FormLabel>
                 <FormDescription>
-                  If you selected a test previously, it might be pre-filled.
+                  Choose one or more tests for your appointment.
                 </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-         )}
-
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+                {mockTests.map((test) => (
+                  <FormField
+                    key={test.id}
+                    control={form.control}
+                    name="testIds"
+                    render={({ field }) => {
+                      return (
+                        <FormItem
+                          key={test.id}
+                          className="flex flex-row items-center space-x-3 space-y-0 p-2 rounded-md border border-transparent hover:border-primary/50 transition-colors"
+                        >
+                          <FormControl>
+                            <Checkbox
+                              checked={field.value?.includes(test.id)}
+                              onCheckedChange={(checked) => {
+                                const currentValues = field.value || [];
+                                return checked
+                                  ? field.onChange([...currentValues, test.id])
+                                  : field.onChange(
+                                      currentValues.filter(
+                                        (value) => value !== test.id
+                                      )
+                                    );
+                              }}
+                            />
+                          </FormControl>
+                          <FormLabel className="font-normal text-sm cursor-pointer flex-grow">
+                            {test.name} (₹{test.price})
+                          </FormLabel>
+                        </FormItem>
+                      );
+                    }}
+                  />
+                ))}
+              </div>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        
+        <FormField
+          control={form.control}
+          name="notes"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Additional Notes (Optional)</FormLabel>
+              <FormControl>
+                <Textarea placeholder="Any specific instructions or information for the phlebotomist." {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         <Button type="submit" size="lg" className="w-full md:w-auto bg-accent hover:bg-accent/90 text-accent-foreground">
            <Send className="mr-2 h-5 w-5" />

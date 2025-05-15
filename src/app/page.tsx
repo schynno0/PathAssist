@@ -36,7 +36,7 @@ export default function HomePage() {
         <div className="container mx-auto px-4 text-center">
           <div className="max-w-3xl mx-auto">
             <h1 className="text-4xl md:text-5xl font-bold text-primary mb-6">
-              Welcome to PathAssist
+              Welcome to YadavLab
             </h1>
             <p className="text-lg md:text-xl text-foreground mb-8">
               Your trusted partner for convenient lab testing, quick report delivery, and intelligent health insights.
@@ -56,13 +56,13 @@ export default function HomePage() {
       {/* How It Works Section */}
       <section className="py-16 md:py-24">
         <div className="container mx-auto px-4">
-          <h2 className="text-3xl font-bold text-center mb-12 text-primary">How PathAssist Works</h2>
+          <h2 className="text-3xl font-bold text-center mb-12 text-primary">How YadavLab Works</h2>
           <div className="grid md:grid-cols-3 gap-8 text-center">
             <div className="flex flex-col items-center p-6 bg-card rounded-lg shadow-md hover:shadow-lg transition-shadow">
               <div className="p-4 bg-primary/10 rounded-full mb-4">
                 <CheckCircle className="h-12 w-12 text-primary" />
               </div>
-              <h3 className="text-xl font-semibold mb-2">1. Choose Your Test</h3>
+              <h3 className="text-xl font-semibold mb-2">1. Choose Your Test(s)</h3>
               <p className="text-muted-foreground">Browse our comprehensive list of tests and select what you need.</p>
             </div>
             <div className="flex flex-col items-center p-6 bg-card rounded-lg shadow-md hover:shadow-lg transition-shadow">
@@ -113,7 +113,7 @@ export default function HomePage() {
             <div className="md:w-1/2 mb-6 md:mb-0 md:pr-8">
               <h2 className="text-3xl font-bold text-primary mb-4">Health Insights at Your Fingertips</h2>
               <p className="text-muted-foreground mb-6">
-                PathAssist empowers you with easy access to lab services and AI-driven analysis, helping you take proactive steps towards better health.
+                YadavLab empowers you with easy access to lab services and AI-driven analysis, helping you take proactive steps towards better health.
               </p>
               <Button asChild size="lg" className="bg-accent hover:bg-accent/90 text-accent-foreground">
                 <Link href="/auth/signin">Get Started</Link>
@@ -126,7 +126,7 @@ export default function HomePage() {
                 width={600}
                 height={400}
                 className="rounded-lg object-cover"
-                data-ai-hint="medical professional"
+                data-ai-hint="medical lab"
               />
             </div>
           </div>

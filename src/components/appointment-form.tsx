@@ -22,6 +22,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Card, CardContent } from '@/components/ui/card'; // Added import
 import { cn } from '@/lib/utils';
 import { CalendarIcon, Send, TestTube2Icon, IndianRupee, ListPlus, AlertTriangle } from 'lucide-react';
 import { format } from 'date-fns';

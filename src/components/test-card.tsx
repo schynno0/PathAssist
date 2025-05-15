@@ -12,7 +12,7 @@ interface TestCardProps {
 export default function TestCard({ test }: TestCardProps) {
   const IconComponent = test.icon || TestTube2;
   const { addTest, removeTest, isTestSelected } = useTestSelectionStore();
-  constisSelected = isTestSelected(test.id);
+  const isSelected = isTestSelected(test.id);
 
   const handleToggleSelection = () => {
     if (isSelected) {
